@@ -1,11 +1,7 @@
-import { join } from "path";
 import express from "express";
-import { readFileSync } from "fs";
-import serveStatic from "serve-static";
 import dotenv from "dotenv";
-
-import shopify from "./shopify.js";
-
+import cors from "cors";
+import cartRouter from "./routes/cart.js";
 dotenv.config();
 
 const backendPort = process.env.BACKEND_PORT as string;
@@ -13,38 +9,27 @@ const envPort = process.env.PORT as string;
 const PORT = parseInt(backendPort || envPort, 10);
 
 const app = express();
-
-// Set up Shopify authentication and webhook handling
-app.get(shopify.config.auth.path, shopify.auth.begin());
-app.get(
-  shopify.config.auth.callbackPath,
-  shopify.auth.callback(),
-  shopify.redirectToShopifyOrAppRoot()
-);
-
-app.post(
-  shopify.config.webhooks.path,
-  shopify.processWebhooks({ webhookHandlers: {} })
-);
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
+app.use(cors());
 
 app.use(express.json());
-
-// All endpoints after this point will require an active session
-app.use("/api/*", shopify.validateAuthenticatedSession());
-
-app.use(serveStatic(`${process.cwd()}/frontend/`, { index: false }));
-
-app.use("/*", shopify.ensureInstalledOnShop(), async (_req, res) => {
-  const htmlContent = readFileSync(
-    join(`${process.cwd()}/frontend/`, "index.html"),
-    "utf-8"
-  );
-  const transformedHtml = htmlContent.replace(
-    /%SHOPIFY_API_KEY%/g,
-    process.env.SHOPIFY_API_KEY || ""
-  );
-
-  res.status(200).set("Content-Type", "text/html").send(transformedHtml);
+app.use((req, res, next) => {
+  console.log('Request:', {
+    method: req.method,
+    path: req.path,
+    query: req.query,
+    body: req.body,
+    headers: req.headers
+  });
+  next();
 });
 
-app.listen(PORT);
+app.use('/api/app_proxy',cartRouter)
+
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Backend server is running on port ${PORT}`);
+  console.log(`Health check available at http://localhost:${PORT}/health`);
+});
